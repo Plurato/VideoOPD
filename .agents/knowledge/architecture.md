@@ -103,6 +103,7 @@ All three registries map string keys → lazy import paths. Resolution: registry
 | `nft` | `DiffusionNFTTrainer` | Decoupled | `BaseTrainer` |
 | `awm` | `AWMTrainer` | Decoupled | `BaseTrainer` |
 | `crd` | `CRDTrainer` | Decoupled | `BaseTrainer` |
+| `opd` | `OPDTrainer` | Decoupled | `BaseTrainer` |
 
 **Flat hierarchy**: New trainers inherit from `BaseTrainer` directly. `GRPOGuardTrainer → GRPOTrainer` is the only sanctioned exception (see constraint #11).
 
@@ -182,7 +183,8 @@ Two-layer structure (constraint #14): task-level samples (`T2ISample`, `I2VSampl
 ```
 Arguments (top-level)
 ├── ModelArguments        # model_type, model_path, finetune_type, LoRA config
-├── TrainingArguments     # Algorithm-specific (GRPO/DPO/NFT/AWM subclass)
+├── TeacherArguments      # optional frozen teacher model config for OPD-style distillation
+├── TrainingArguments     # Algorithm-specific (GRPO/DPO/NFT/AWM/OPD subclass)
 ├── SchedulerArguments    # dynamics_type, timestep_range, num_inference_steps
 ├── DataArguments         # dataset, preprocessing, resolution, sampler_type
 ├── MultiRewardArguments  # reward_model configs (list of RewardArguments)

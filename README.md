@@ -92,6 +92,7 @@ This experimental feature leverages `diffusers`'s `transformer.set_attention_bac
 | DGPO           | dgpo           | [DGPO](https://arxiv.org/abs/2510.08425) |
 | GRPO-Guard     | grpo-guard     | [GRPO-Guard](https://arxiv.org/abs/2510.22319) |
 | CRD            | crd            | [Centered Reward Distillation](https://arxiv.org/abs/2603.14128) ([Blog (Chinese)](https://mp.weixin.qq.com/s/fpTi7PPi3APSNJQ2kXN3Dw))|
+| OPD            | opd            | Step-level teacher distillation for flow-matching video models |
 
 See [`Algorithm Guidance`](guidance/algorithms.md) for more information.
 
@@ -147,6 +148,7 @@ Start training with the following simple command:
 
 ```bash
 ff-train examples/grpo/lora/flux1/default.yaml
+ff-train examples/opd/lora/wan21/t2v_reward_teacher.yaml
 ```
 
 # 📖 Guidance

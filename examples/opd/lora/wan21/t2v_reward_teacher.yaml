@@ -1,0 +1,122 @@
+# Environment Configuration
+launcher: "accelerate"  # Options: accelerate
+config_file: config/deepspeed/deepspeed_zero2.yaml
+num_processes: 8
+main_process_port: 29500
+mixed_precision: "bf16"  # Options: no, fp16, bf16
+
+# Data Configuration
+data:
+  dataset_dir: "dataset/opd_wan21"  # train.jsonl with prompt plus optional opd_context
+  preprocessing_batch_size: 16
+  dataloader_num_workers: 16
+  force_reprocess: false
+  cache_dir: "~/.cache/flow_factory/datasets"
+  max_dataset_size: 1000
+  sampler_type: "auto"  # Options: auto, distributed_k_repeat, group_contiguous
+
+# Student Model Configuration
+model:
+  finetune_type: "lora"  # Options: full, lora
+  lora_rank: 64
+  lora_alpha: 128
+  target_components: "transformer"
+  target_modules: "default"
+  model_name_or_path: "Wan-AI/Wan2.1-T2V-1.3B-Diffusers"
+  model_type: "wan2_t2v"
+  resume_path: null
+  resume_type: null
+
+# Frozen Teacher Model Configuration
+teacher:
+  model_type: "wan2_t2v"
+  model_name_or_path: "xilanhua12138/Wan2.1-T2V-1.3B-Reward"
+  master_weight_dtype: "bfloat16"
+  target_components: []
+  runtime_components: ["text_encoders", "transformers"]
+  prompt_template: "{prompt}\n\nTeacher-only context:\n{context}"
+  negative_prompt: null
+
+log:
+  run_name: null
+  project: "Flow-Factory-OPD"
+  logging_backend: "wandb"  # Options: wandb, swanlab, tensorboard, none
+  save_dir: "saves/"
+  save_freq: 20
+  save_model_only: true
+
+# Training Configuration
+train:
+  trainer_type: "opd"
+  opd_loss_type: "velocity_mse"  # Options: velocity_mse, x0_mse
+  opd_teacher_weight: 1.0
+  opd_reward_weight: 0.0  # Set >0 only after adding scalar rewards below
+  opd_kl_beta: 0.0
+  ref_param_device: "cuda"  # Used only when opd_kl_beta > 0
+
+  # Teacher context seen only by the frozen teacher prompt encoder
+  teacher_guidance_scale: 5.0
+  teacher_context_keys: ["dense_caption", "scene_graph"]
+  teacher_context_dropout: 0.0
+
+  # OPD forward-process timesteps
+  num_train_timesteps: 4
+  time_sampling_strategy: "discrete"  # Options: uniform, logit_normal, discrete, discrete_with_init, discrete_wo_init
+  time_shift: 3.0
+  timestep_range: 0.9
+  opd_timestep_mode: "forward_process"
+  store_student_trajectory: false
+  opd_trajectory_indices: null
+
+  # Student sampling settings
+  resolution: [480, 832]
+  num_frames: 17
+  num_inference_steps: 12
+  guidance_scale: 5.0
+
+  # Batch and sampling
+  per_device_batch_size: 1
+  group_size: 4
+  global_std: false
+  advantage_aggregation: "gdpo"  # Used only when opd_reward_weight > 0
+  unique_sample_num_per_epoch: 32
+  gradient_step_per_epoch: 1
+  gradient_accumulation_steps: auto
+
+  # Optimization
+  seed: 42
+  learning_rate: 1.0e-4
+  adam_weight_decay: 1.0e-4
+  adam_betas: [0.9, 0.999]
+  adam_epsilon: 1.0e-8
+  max_grad_norm: 1.0
+
+  # EMA and memory
+  ema_decay: 0.5
+  ema_update_interval: 1
+  ema_device: "cuda"
+  enable_gradient_checkpointing: false
+  offload_samples_to_cpu: true
+
+# Scheduler Configuration
+scheduler:
+  dynamics_type: "ODE"  # OPD forward-process matching is decoupled, so ODE sampling is valid
+
+# Evaluation settings
+eval:
+  resolution: [480, 832]
+  num_frames: 17
+  per_device_batch_size: 1
+  guidance_scale: 5.0
+  num_inference_steps: 20
+  eval_freq: 20
+  seed: 42
+
+# Optional scalar rewards for reward-weighted OPD.
+# rewards:
+#   - name: "pick_score"
+#     reward_model: "PickScore"
+#     weight: 1.0
+#     batch_size: 16
+#     device: "cuda"
+#     dtype: bfloat16

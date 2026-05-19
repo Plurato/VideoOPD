@@ -221,11 +221,12 @@ BaseSample(
 | **AWM** | `False` | `[-1]` (final only) | Same as NFT; log-prob computed later during optimization |
 | **DGPO** | `False` | `[-1]` (final only) | Same trajectory policy as NFT/AWM; optimization uses fresh `TimeSampler` timesteps |
 | **CRD** | `False` | `[-1]` (final only) | Same trajectory policy as NFT/AWM; reward distillation against CFG-guided teacher reference |
+| **OPD** | `False` | `[-1]` (final only) | Teacher velocity matching on forward-process timesteps; teacher sees `opd_context`, student does not |
 
 ### Key Points
 
 - **Selective trajectory recording**: `trajectory_indices` controls which denoising steps are stored. For GRPO, only steps corresponding to `train_timesteps` are kept to reduce memory.
-- **SDE dynamics for exploration**: GRPO injects noise during sampling via SDE formulation, enabling the log-probability computation required for policy gradients. NFT, AWM, DGPO, and CRD use decoupled sampling (typically ODE) with `compute_log_prob=False`.
+- **SDE dynamics for exploration**: GRPO injects noise during sampling via SDE formulation, enabling the log-probability computation required for policy gradients. NFT, AWM, DGPO, CRD, and OPD use decoupled sampling (typically ODE) with `compute_log_prob=False`.
 - **Off-policy sampling**: NFT optionally uses EMA parameters for sampling (`off_policy: true`), while the current policy is optimized — stabilizing training.
 
 
@@ -401,6 +402,7 @@ def optimize(self, samples):
 | **AWM** | Samples fresh timesteps; weights velocity matching loss by advantage; PPO clipping + EMA-KL regularization |
 | **DGPO** | Samples fresh timesteps via `TimeSampler`; applies group-level preference objective with optional PPO clipping and EMA-reference KL |
 | **CRD** | Samples fresh timesteps; reward distillation against CFG-guided teacher with adaptive KL; old/sampling model snapshots and centered advantages |
+| **OPD** | Samples fresh forward-process timesteps; matches student velocity to a frozen teacher that receives teacher-only context |
 | **DPO** | Preference loss on chosen/rejected pairs; pairs formed at the start of `optimize` after advantages |
 
 ### Key Points
@@ -408,7 +410,7 @@ def optimize(self, samples):
 - **Inner epochs**: Samples can be reused for multiple optimization passes (`num_inner_epochs`), amortizing the cost of sampling.
 - **Gradient accumulation**: The `accelerator.accumulate()` context handles gradient accumulation across timesteps and micro-batches, with optimizer steps only at sync boundaries.
 - **KL regularization**: Optional penalty keeping the policy close to a reference model (or EMA model for AWM), preventing reward hacking.
-- **Per-timestep iteration**: GRPO iterates over each stored trajectory timestep, computing loss at each. NFT, AWM, DGPO, and CRD sample fresh timesteps independently of the sampling trajectory.
+- **Per-timestep iteration**: GRPO iterates over each stored trajectory timestep, computing loss at each. NFT, AWM, DGPO, CRD, and OPD sample fresh timesteps independently of the sampling trajectory.
 
 
 ## Putting It All Together

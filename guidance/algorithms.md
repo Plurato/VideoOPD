@@ -23,6 +23,8 @@
 
 - [CRD: Centered Reward Distillation](#crd-centered-reward-distillation)
 
+- [OPD: Step-Level Teacher Distillation](#opd-step-level-teacher-distillation)
+
 - [References](#references)
 
 ## Overview
@@ -32,7 +34,7 @@ Flow-Factory provides unified implementations of state-of-the-art RL algorithms 
 At a high level, the supported algorithms fall into two paradigms:
 
 - **Coupled paradigm (GRPO and variants)**: Training timesteps are coupled with the SDE-based sampling dynamics, requiring tractable log-probability computation for policy gradient optimization.
-- **Decoupled paradigm (DPO, DiffusionNFT, AWM, DGPO)**: Training timesteps are decoupled from the actual sampling dynamics, making them inherently solver-agnostic — any ODE solver can be used for trajectory generation without modifying the training procedure.
+- **Decoupled paradigm (DPO, DiffusionNFT, AWM, DGPO, OPD)**: Training timesteps are decoupled from the actual sampling dynamics, making them inherently solver-agnostic — any ODE solver can be used for trajectory generation without modifying the training procedure.
 
 ## GRPO
 
@@ -79,7 +81,7 @@ train:
     dynamics_type: 'Flow-SDE' # Options are ['Flow-SDE', 'Dance-SDE', 'CPS', 'ODE'].
 ```
 
-> **Note**: `ODE` dynamics produce deterministic trajectories and cannot provide log-probability estimates. Therefore, `ODE` can only be used with decoupled algorithms such as `NFT`, `AWM`, and `DGPO`. See the [DiffusionNFT](#diffusionnft), [AWM](#awm-advantage-weighted-matching), and [DGPO](#dgpo) sections.
+> **Note**: `ODE` dynamics produce deterministic trajectories and cannot provide log-probability estimates. Therefore, `ODE` can only be used with decoupled algorithms such as `NFT`, `AWM`, `DGPO`, and `OPD`. See the [DiffusionNFT](#diffusionnft), [AWM](#awm-advantage-weighted-matching), [DGPO](#dgpo), and [OPD](#opd-step-level-teacher-distillation) sections.
 
 
 ### Efficiency Strategies
@@ -480,6 +482,58 @@ train:
 | `== 0` | Hard selection | Positive pool (adv > 0) vs negative pool (adv < 0) |
 | `> 0` | Softmax temperature | Dual-direction: `softmax(adv/τ)` and `softmax(-adv/τ)` |
 
+
+## OPD: Step-Level Teacher Distillation
+
+`opd` implements the step-level migration of OPD-style supervision from token-level language generation to flow-matching video generation. The student rolls out videos from text only; the frozen teacher is evaluated on the student's latent state at sampled flow timesteps and can see teacher-only context serialized from dataset metadata, such as `dense_caption` or `scene_graph`.
+
+The first implementation is a decoupled forward-process objective:
+
+```text
+x_t = (1 - sigma) * x_1 + sigma * noise
+loss = ||v_student(x_t, t, text) - stopgrad(v_teacher(x_t, t, text + context))||^2
+```
+
+This keeps the rollout memory footprint close to NFT/AWM because only the final latent `x_1` is stored. It is therefore a practical MVP for Wan text-to-video experiments. Trajectory-mode OPD, where teacher supervision is applied to stored rollout latents from selected denoising steps, is intentionally reserved for a later extension.
+
+To use this algorithm, set:
+
+```yaml
+train:
+  trainer_type: "opd"
+
+teacher:
+  model_type: "wan2_t2v"
+  model_name_or_path: "xilanhua12138/Wan2.1-T2V-1.3B-Reward"
+```
+
+### Key Hyperparameters
+
+```yaml
+train:
+  trainer_type: "opd"
+  opd_loss_type: "velocity_mse"   # Options: velocity_mse, x0_mse
+  opd_teacher_weight: 1.0
+  opd_reward_weight: 0.0          # >0 enables scalar-reward advantage weighting
+  opd_kl_beta: 0.0                # >0 enables v-space KL against student reference
+
+  teacher_guidance_scale: 5.0
+  teacher_context_keys: ["dense_caption", "scene_graph"]
+  teacher_context_dropout: 0.0
+
+  num_train_timesteps: 4
+  time_sampling_strategy: "discrete"
+  timestep_range: 0.9
+  opd_timestep_mode: "forward_process"
+```
+
+Dataset rows should keep teacher-only information under `opd_context` so it never enters the student adapter:
+
+```json
+{"prompt": "A person opens a red umbrella in the rain.", "opd_context": {"dense_caption": "The scene starts with...", "scene_graph": {"objects": ["person", "umbrella"], "relations": [["person", "holds", "umbrella"]]}}}
+```
+
+The current teacher context builder supports text-serializable keys. Media keys such as `first_frame`, `last_frame`, `depth`, `pose`, `optical_flow`, and `object_tracks` fail fast until an adapter-specific image/video context encoder is added. For a runnable Wan2.1 text-to-video setup, see `examples/opd/lora/wan21/t2v_reward_teacher.yaml`.
 
 ## References
 

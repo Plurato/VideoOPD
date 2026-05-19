@@ -51,6 +51,10 @@ isort --check src/              # Import sort check
 pytest                          # Run tests
 ```
 
+## Local Execution Constraint
+
+This local checkout is for static code and documentation changes only. The runnable GPU environment and model weights live on a remote server, so do not run local training, inference, tests, dependency installation, or model-loading commands unless the user explicitly says the local environment is ready.
+
 ## Project Structure
 
 See `architecture.md` "Module Dependency Graph" for full details.

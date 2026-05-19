@@ -18,6 +18,7 @@ from .args import Arguments
 
 from .data_args import DataArguments
 from .model_args import ModelArguments
+from .teacher_args import TeacherArguments
 from .scheduler_args import SchedulerArguments
 from .training_args import (
     TrainingArguments,
@@ -27,6 +28,7 @@ from .training_args import (
     DGPOTrainingArguments,
     DPOTrainingArguments,
     CRDTrainingArguments,
+    OPDTrainingArguments,
     get_training_args_class,
 )
 from .reward_args import RewardArguments, MultiRewardArguments
@@ -37,6 +39,7 @@ __all__ = [
     "Arguments",
     "DataArguments",
     "ModelArguments",
+    "TeacherArguments",
     "SchedulerArguments",
     "TrainingArguments",
     "GRPOTrainingArguments",
@@ -45,6 +48,7 @@ __all__ = [
     "DGPOTrainingArguments",
     "DPOTrainingArguments",
     "CRDTrainingArguments",
+    "OPDTrainingArguments",
     "get_training_args_class",
     "RewardArguments",
     "MultiRewardArguments",

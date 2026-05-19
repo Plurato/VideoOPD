@@ -18,7 +18,7 @@ from __future__ import annotations
 import yaml
 import importlib
 from dataclasses import dataclass, field
-from typing import Any, Type, Literal, Union, Optional, Tuple, Dict
+from typing import Any, Type, Literal, Union, Optional, Tuple, Dict, List
 
 from .abc import ArgABC
 from ..utils.dist import get_world_size
@@ -934,6 +934,148 @@ class CRDTrainingArguments(TrainingArguments):
         """Account for kl_cfg: ref model may need CFG even when sampling does not."""
         return max(self.guidance_scale, self.kl_cfg)
 
+
+@dataclass
+class OPDTrainingArguments(TrainingArguments):
+    r"""Training arguments for step-level OPD teacher distillation."""
+
+    global_std: bool = field(
+        default=True,
+        metadata={"help": "Whether to use global std for optional reward advantage normalization."},
+    )
+    advantage_aggregation: Literal['sum', 'gdpo'] = field(
+        default='gdpo',
+        metadata={"help": "Optional reward advantage aggregation. Options: ['sum', 'gdpo']."},
+    )
+    opd_loss_type: Literal['velocity_mse', 'x0_mse'] = field(
+        default='velocity_mse',
+        metadata={"help": "Step-level OPD loss. Options: velocity_mse, x0_mse."},
+    )
+    opd_teacher_weight: float = field(
+        default=1.0,
+        metadata={"help": "Weight for the teacher step-level distillation loss."},
+    )
+    opd_reward_weight: float = field(
+        default=0.0,
+        metadata={
+            "help": (
+                "Optional advantage modulation strength. 0 disables scalar rewards; "
+                "positive values multiply per-sample OPD loss by max(0, 1 + weight * advantage)."
+            )
+        },
+    )
+    opd_kl_beta: float = field(
+        default=0.0,
+        metadata={
+            "help": "Optional v-space KL penalty against the student's frozen reference model."
+        },
+    )
+    adv_clip_range: tuple[float, float] = field(
+        default=(-5.0, 5.0),
+        metadata={"help": "Clipping range for optional reward advantages."},
+    )
+    kl_type: Literal['v-based'] = field(
+        default='v-based',
+        metadata={"help": "OPD currently supports v-based KL only."},
+    )
+    ref_param_device: Literal["cpu", "cuda"] = field(
+        default="cuda",
+        metadata={"help": "Device to store reference model parameters when opd_kl_beta > 0."},
+    )
+    num_train_timesteps: int = field(
+        default=0,
+        metadata={
+            "help": (
+                "Number of forward-process training timesteps. 0 defaults to "
+                "`int(num_inference_steps * (timestep_range[1] - timestep_range[0]))`."
+            )
+        },
+    )
+    time_sampling_strategy: Literal[
+        'uniform',
+        'logit_normal',
+        'discrete',
+        'discrete_with_init',
+        'discrete_wo_init',
+    ] = field(
+        default='discrete',
+        metadata={"help": "Time sampling strategy for OPD forward-process matching."},
+    )
+    time_shift: float = field(
+        default=3.0,
+        metadata={"help": "Time shift for logit-normal or uniform OPD timestep sampling."},
+    )
+    timestep_range: Union[float, Tuple[float, float]] = field(
+        default=0.9,
+        metadata={
+            "help": "Fraction range along denoise axis 1000→0; float means [0, value]."
+        },
+    )
+    opd_timestep_mode: Literal['forward_process'] = field(
+        default='forward_process',
+        metadata={"help": "OPD timestep source. This MVP implements forward_process only."},
+    )
+    teacher_guidance_scale: float = field(
+        default=5.0,
+        metadata={"help": "CFG scale used by the frozen teacher forward pass."},
+    )
+    teacher_context_keys: List[str] = field(
+        default_factory=lambda: ["dense_caption", "scene_graph"],
+        metadata={"help": "Metadata keys exposed to the teacher prompt only."},
+    )
+    teacher_context_dropout: float = field(
+        default=0.0,
+        metadata={"help": "Per-context-key dropout probability for teacher prompt augmentation."},
+    )
+    store_student_trajectory: bool = field(
+        default=False,
+        metadata={
+            "help": "Reserve flag for future trajectory-mode OPD. The MVP stores final latent only."
+        },
+    )
+    opd_trajectory_indices: Optional[List[int]] = field(
+        default=None,
+        metadata={"help": "Reserve field for future trajectory-mode OPD."},
+    )
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.timestep_range = _standardize_timestep_range(self.timestep_range)
+        if not self.num_train_timesteps or self.num_train_timesteps <= 0:
+            self.num_train_timesteps = max(
+                1,
+                int(self.num_inference_steps * (self.timestep_range[1] - self.timestep_range[0])),
+            )
+        self.adv_clip_range = _standardize_clip_range(self.adv_clip_range, 'adv_clip_range')
+        if self.opd_teacher_weight <= 0:
+            raise ValueError(
+                f"`opd_teacher_weight` must be positive, got {self.opd_teacher_weight}."
+            )
+        if self.opd_reward_weight < 0:
+            raise ValueError(
+                f"`opd_reward_weight` must be non-negative, got {self.opd_reward_weight}."
+            )
+        if self.opd_kl_beta < 0:
+            raise ValueError(f"`opd_kl_beta` must be non-negative, got {self.opd_kl_beta}.")
+        if not 0.0 <= self.teacher_context_dropout < 1.0:
+            raise ValueError(
+                "`teacher_context_dropout` must satisfy 0 <= value < 1, "
+                f"got {self.teacher_context_dropout}."
+            )
+        if self.kl_type not in ['v-based']:
+            raise ValueError(f"Invalid KL type: {self.kl_type}. Valid options are: ['v-based'].")
+        if self.opd_timestep_mode != 'forward_process':
+            raise ValueError("This OPD MVP implements only `opd_timestep_mode='forward_process'`.")
+
+    @property
+    def requires_ref_model(self) -> bool:
+        """OPD needs a student reference model only when v-space KL is enabled."""
+        return self.opd_kl_beta > 0.0
+
+    def get_num_train_timesteps(self, args: Any) -> int:
+        assert self.num_train_timesteps is not None
+        return self.num_train_timesteps
+
 # ============================================================================
 # Training Arguments Registry
 # ============================================================================
@@ -946,6 +1088,7 @@ _TRAINING_ARGS_REGISTRY: Dict[str, Type[TrainingArguments]] = {
     'dgpo': DGPOTrainingArguments,
     'dpo': DPOTrainingArguments,
     'crd': CRDTrainingArguments,
+    'opd': OPDTrainingArguments,
 }
 
 

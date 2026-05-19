@@ -28,6 +28,7 @@ import math
 from .abc import ArgABC
 from .data_args import DataArguments
 from .model_args import ModelArguments
+from .teacher_args import TeacherArguments
 from .scheduler_args import SchedulerArguments
 from .training_args import TrainingArguments, EvaluationArguments, get_training_args_class
 from .reward_args import RewardArguments, MultiRewardArguments
@@ -72,6 +73,10 @@ class Arguments(ArgABC):
     model_args: ModelArguments = field(
         default_factory=ModelArguments,
         metadata={"help": "Arguments for model configuration."},
+    )
+    teacher_args: Optional[TeacherArguments] = field(
+        default=None,
+        metadata={"help": "Optional frozen teacher model configuration."},
     )
     scheduler_args: SchedulerArguments = field(
         default_factory=SchedulerArguments,
@@ -468,6 +473,7 @@ class Arguments(ArgABC):
         nested_map = {
             'data': ('data_args', DataArguments),
             'model': ('model_args', ModelArguments),
+            'teacher': ('teacher_args', TeacherArguments),
             'scheduler': ('scheduler_args', SchedulerArguments),
             'train': ('training_args', training_args_cls),
             'eval': ('eval_args', EvaluationArguments),
