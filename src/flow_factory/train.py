@@ -13,9 +13,12 @@
 # limitations under the License.
 
 # src/flow_factory/train.py
-import os
 import argparse
 import logging
+import os
+
+import torch
+
 from .hparams import Arguments
 from .trainers import load_trainer
 
@@ -30,6 +33,26 @@ def parse_args():
     return parser.parse_known_args()
 
 
+def _preflight_local_rank(local_rank: int) -> None:
+    """Fail early when an external launcher assigns a rank beyond visible GPUs."""
+    if not torch.cuda.is_available():
+        return
+    gpu_count = torch.cuda.device_count()
+    if local_rank >= gpu_count:
+        visible = os.environ.get("CUDA_VISIBLE_DEVICES")
+        visible_msg = (
+            f"CUDA_VISIBLE_DEVICES={visible}"
+            if visible
+            else "CUDA_VISIBLE_DEVICES is not set"
+        )
+        raise ValueError(
+            f"LOCAL_RANK={local_rank} maps to cuda:{local_rank}, but this process "
+            f"only sees {gpu_count} CUDA GPU(s) ({visible_msg}). "
+            "Reduce `num_processes` to the number of visible GPUs on this node, "
+            "or launch with a matching CUDA_VISIBLE_DEVICES setting."
+        )
+
+
 def main():
     args, unknown = parse_args()
     
@@ -40,6 +63,7 @@ def main():
     rank = int(os.environ.get("RANK", "0"))
     world_size = int(os.environ.get("WORLD_SIZE", "1"))
     local_rank = int(os.environ.get("LOCAL_RANK", "0"))
+    _preflight_local_rank(local_rank)
     
     if local_rank == 0:
         logger.info("=" * 100)

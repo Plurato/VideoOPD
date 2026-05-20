@@ -1,7 +1,7 @@
 # Environment Configuration
 launcher: "accelerate"  # Options: accelerate
 config_file: config/deepspeed/deepspeed_zero2.yaml
-num_processes: 8
+num_processes: 4  # Match the 4 GPUs visible on the current OPD server; adjust if needed.
 main_process_port: 29500
 mixed_precision: "bf16"  # Options: no, fp16, bf16
 
@@ -79,8 +79,8 @@ train:
   num_inference_steps: 12
   guidance_scale: 5.0
 
-  # Batch and sampling — geometry chosen for 8 GPUs (W=8, B=1, G=1):
-  #   M*K = 32*4 = 128, divisible by W*B*G = 8;  M = 32 divisible by W = 8.
+  # Batch and sampling — geometry chosen for 4 GPUs (W=4, B=1, G=1):
+  #   M*K = 32*4 = 128, divisible by W*B*G = 4;  M = 32 divisible by W = 4.
   per_device_batch_size: 1
   group_size: 4
   global_std: false

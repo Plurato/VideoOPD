@@ -54,6 +54,14 @@ Based on the fix type, write the fix entry to the appropriate document:
 - **Lesson**: When extending a base contract for a partial-coverage feature (where only some subclasses will participate), no-op default + opt-in override beats forcing every subclass to acknowledge it. Reserve `@abstractmethod` for invariants that ALL subclasses must implement (e.g. `load_pipeline`, `decode_latents`, `forward`, `inference`).
 - **Related Constraint**: #12 (post-update text codifies "Optional encoder overrides (no-op default)").
 
+### Launcher process count exceeds visible GPUs
+- **Date**: 2026-05-20
+- **Symptom**: Accelerate/DeepSpeed failed during initialization with `ValueError: device_id cuda:7 is out of range. Please use a device index less than the number of accelerators available: 4.`
+- **Root Cause**: The launch configuration requested 8 local processes on a node where only 4 CUDA devices were visible, so local rank 7 mapped to a nonexistent `cuda:7`.
+- **Fix**: `cli.py` now validates `num_processes / num_machines` against the visible local GPU count before launching, `train.py` validates externally supplied `LOCAL_RANK` before constructing `Accelerator`, and the OPD Wan2.1 example uses `num_processes: 4` with matching sampler geometry comments.
+- **Lesson**: Distributed process geometry must match `CUDA_VISIBLE_DEVICES` per node. Validate before distributed initialization because the later DeepSpeed error hides the configuration-level cause.
+- **Related Constraint**: N/A
+
 ## Cross-refs
 
 - `constraints.md` (archival target for constraint violations)

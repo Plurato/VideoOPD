@@ -13,12 +13,13 @@
 # limitations under the License.
 
 # src/flow_factory/cli.py
-import sys
+import argparse
+import logging
 import os
 import signal
 import subprocess
-import argparse
-import logging
+import sys
+
 import torch
 import yaml
 
@@ -98,6 +99,51 @@ def get_gpu_count():
         return 0
 
 
+def _format_visible_devices() -> str:
+    """Return a readable CUDA_VISIBLE_DEVICES summary for launch diagnostics."""
+    visible = os.environ.get("CUDA_VISIBLE_DEVICES")
+    if visible is None or visible == "":
+        return "CUDA_VISIBLE_DEVICES is not set"
+    return f"CUDA_VISIBLE_DEVICES={visible}"
+
+
+def _validate_process_geometry(num_procs: int, num_machines: int, gpu_count: int) -> None:
+    """Validate launcher process count against GPUs visible on this node."""
+    if num_procs < 1:
+        logger.error(f"num_processes must be positive, got {num_procs}.")
+        sys.exit(1)
+    if num_machines < 1:
+        logger.error(f"num_machines must be positive, got {num_machines}.")
+        sys.exit(1)
+
+    if gpu_count <= 0:
+        if num_procs > 1:
+            logger.error(
+                f"Requested num_processes={num_procs}, but no CUDA GPUs are visible "
+                f"on this node ({_format_visible_devices()})."
+            )
+            sys.exit(1)
+        return
+
+    if num_procs % num_machines != 0:
+        logger.error(
+            f"num_processes({num_procs}) must be divisible by num_machines({num_machines}) "
+            "so each node launches the same number of local processes."
+        )
+        sys.exit(1)
+
+    local_processes = num_procs // num_machines
+    if local_processes > gpu_count:
+        logger.error(
+            f"Requested num_processes={num_procs} across num_machines={num_machines}, "
+            f"which launches {local_processes} local processes per node, but this node "
+            f"only sees {gpu_count} CUDA GPU(s) ({_format_visible_devices()}). "
+            "Set top-level `num_processes` to the number of visible GPUs for single-node "
+            "runs, pass `--num_processes <visible_gpu_count>`, or expose enough GPUs."
+        )
+        sys.exit(1)
+
+
 def parse_args():
     """Parse command line arguments with optional multi-node overrides."""
     parser = argparse.ArgumentParser(description="Flow-Factory Launcher")
@@ -153,11 +199,7 @@ def train_cli():
     if num_procs is None:
         num_procs = max(1, num_machines * gpu_count) if gpu_count > 0 else 1
 
-    if num_procs > gpu_count * max(num_machines, 1) and gpu_count > 0:
-        logger.warning(
-            f"Requested {num_procs} processes but {num_machines} node(s) x "
-            f"{gpu_count} GPU(s)/node = {num_machines * gpu_count} GPUs available."
-        )
+    _validate_process_geometry(num_procs, num_machines, gpu_count)
 
     # 3. Build the arguments for the training script
     script_args = [args.config] + unknown
