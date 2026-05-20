@@ -7,9 +7,9 @@ mixed_precision: "bf16"  # Options: no, fp16, bf16
 
 # Data Configuration
 data:
-  dataset_dir: "dataset/opd_wan21"  # train.jsonl with prompt plus optional opd_context
-  preprocessing_batch_size: 16
-  dataloader_num_workers: 16
+  dataset_dir: "dataset/opd_wan21"  # JSONL with `prompt` (plus optional dense_caption / scene_graph for teacher-only context)
+  preprocessing_batch_size: 8
+  dataloader_num_workers: 4
   force_reprocess: false
   cache_dir: "~/.cache/flow_factory/datasets"
   max_dataset_size: 1000
@@ -40,14 +40,19 @@ teacher:
 log:
   run_name: null
   project: "Flow-Factory-OPD"
-  logging_backend: "wandb"  # Options: wandb, swanlab, tensorboard, none
+  logging_backend: "tensorboard"  # Options: wandb, swanlab, tensorboard, none
   save_dir: "saves/"
-  save_freq: 20
+  # MVP run: checkpoint every 2 epochs (epochs 0, 2, 4) so we get LoRA snapshots
+  # at the start, middle, and near-end of the 5-epoch run for offline inspection.
+  save_freq: 2
   save_model_only: true
 
 # Training Configuration
 train:
   trainer_type: "opd"
+  # MVP smoke run: ~5 outer epochs is enough to confirm the loss curve and pipeline.
+  # Set to null or a negative value to train indefinitely.
+  max_epochs: 5
   opd_loss_type: "velocity_mse"  # Options: velocity_mse, x0_mse
   opd_teacher_weight: 1.0
   opd_reward_weight: 0.0  # Set >0 only after adding scalar rewards below
@@ -74,7 +79,8 @@ train:
   num_inference_steps: 12
   guidance_scale: 5.0
 
-  # Batch and sampling
+  # Batch and sampling — geometry chosen for 8 GPUs (W=8, B=1, G=1):
+  #   M*K = 32*4 = 128, divisible by W*B*G = 8;  M = 32 divisible by W = 8.
   per_device_batch_size: 1
   group_size: 4
   global_std: false
@@ -109,7 +115,10 @@ eval:
   per_device_batch_size: 1
   guidance_scale: 5.0
   num_inference_steps: 20
-  eval_freq: 20
+  # Disable periodic eval during the MVP smoke run so the 5-epoch budget
+  # spends 100% of compute on the OPD loss. Set to 1 (or 5) to inspect
+  # generations once the loss curve looks sensible.
+  eval_freq: 0
   seed: 42
 
 # Optional scalar rewards for reward-weighted OPD.
