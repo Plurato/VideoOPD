@@ -62,6 +62,14 @@ Based on the fix type, write the fix entry to the appropriate document:
 - **Lesson**: Distributed process geometry must match `CUDA_VISIBLE_DEVICES` per node. Validate before distributed initialization because the later DeepSpeed error hides the configuration-level cause.
 - **Related Constraint**: N/A
 
+### Scheduler config contains incompatible checkpoint keys
+- **Date**: 2026-05-23
+- **Symptom**: OPD teacher loading failed while replacing the checkpoint scheduler with `TypeError: FlowMatchEulerDiscreteScheduler.__init__() got an unexpected keyword argument 'beta_end'`.
+- **Root Cause**: `scheduler/loader.py` passed the checkpoint scheduler config verbatim into the registered SDE scheduler, but the Wan reward teacher checkpoint can carry scheduler keys such as `beta_end` that are valid for other schedulers and invalid for `FlowMatchEulerDiscreteScheduler`.
+- **Fix**: `scheduler/loader.py` now filters merged scheduler config keys against the target scheduler class and its parent constructors before instantiation, while preserving Flow-Factory SDE args such as `noise_level`, `sde_steps`, `num_sde_steps`, `seed`, and `dynamics_type`.
+- **Lesson**: Checkpoint scheduler configs are not a stable constructor contract across scheduler families. When wrapping a diffusers scheduler class, instantiate from keys accepted by the target scheduler rather than blindly forwarding every serialized config field.
+- **Related Constraint**: N/A
+
 ## Cross-refs
 
 - `constraints.md` (archival target for constraint violations)

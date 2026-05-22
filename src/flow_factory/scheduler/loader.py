@@ -17,7 +17,9 @@
 Scheduler Loader
 Factory function to instantiate SDE schedulers from pipeline schedulers.
 """
-from typing import Union
+import inspect
+from typing import Any, Dict, Set, Type
+
 from diffusers.schedulers.scheduling_utils import SchedulerMixin
 
 from .abc import SDESchedulerMixin
@@ -28,6 +30,43 @@ from ..utils.logger_utils import setup_logger
 logger = setup_logger(__name__)
 
 
+def _get_scheduler_init_keys(scheduler_cls: Type) -> Set[str]:
+    """Return constructor keys accepted by a scheduler class or its parents."""
+    keys: Set[str] = set()
+    for cls in scheduler_cls.mro():
+        if cls is object:
+            continue
+        try:
+            signature = inspect.signature(cls.__init__)
+        except (TypeError, ValueError):
+            continue
+        for name, parameter in signature.parameters.items():
+            if name == "self":
+                continue
+            if parameter.kind in (
+                inspect.Parameter.POSITIONAL_OR_KEYWORD,
+                inspect.Parameter.KEYWORD_ONLY,
+            ):
+                keys.add(name)
+    return keys
+
+
+def _filter_scheduler_config(scheduler_cls: Type, config: Dict[str, Any]) -> Dict[str, Any]:
+    """Drop checkpoint scheduler config keys unsupported by the target scheduler."""
+    accepted_keys = _get_scheduler_init_keys(scheduler_cls)
+    if not accepted_keys:
+        raise ValueError(f"Could not inspect scheduler constructor for {scheduler_cls.__name__}.")
+    filtered_config = {key: value for key, value in config.items() if key in accepted_keys}
+    dropped_keys = sorted(set(config) - set(filtered_config))
+    if dropped_keys:
+        logger.info(
+            "Dropped scheduler config keys not accepted by %s: %s",
+            scheduler_cls.__name__,
+            dropped_keys,
+        )
+    return filtered_config
+
+
 def load_scheduler(
     pipeline_scheduler: SchedulerMixin,
     scheduler_args: SchedulerArguments,
@@ -35,7 +74,8 @@ def load_scheduler(
     """
     Create an SDE scheduler from a pipeline scheduler and scheduler args.
     
-    Merges the original scheduler config with SDE-specific args.
+    Merges the original scheduler config with SDE-specific args, then keeps
+    only constructor keys accepted by the registered target scheduler.
     
     Args:
         pipeline_scheduler: Scheduler from pipeline.from_pretrained()
@@ -53,6 +93,7 @@ def load_scheduler(
     # Merge base config with SDE args
     base_config = dict(pipeline_scheduler.config)
     base_config.update(scheduler_args.to_dict())
+    base_config = _filter_scheduler_config(sde_class, base_config)
     
     scheduler = sde_class(**base_config)
     logger.info(f"Loaded SDE scheduler: {sde_class.__name__}")
