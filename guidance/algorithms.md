@@ -485,14 +485,17 @@ train:
 
 ## OPD: Step-Level Teacher Distillation
 
-`opd` implements the step-level migration of OPD-style supervision from token-level language generation to flow-matching video generation. The student rolls out videos from text only; the frozen teacher is evaluated on the student's latent state at sampled flow timesteps and can see teacher-only context serialized from dataset metadata, such as `dense_caption` or `scene_graph`.
+`opd` implements the step-level migration of OPD-style supervision from token-level language generation to flow-matching video generation. The student rolls out videos from text only; the frozen teacher is evaluated on the student's latent state at sampled flow timesteps. By default, the teacher and student use the same `prompt`, which makes prompt-only datasets such as `dataset/vid_prompt` usable for the first method-validation run. Teacher-only context from dataset metadata, such as `dense_caption` or `scene_graph`, can be enabled later by setting `teacher_context_keys`.
 
 The first implementation is a decoupled forward-process objective:
 
 ```text
 x_t = (1 - sigma) * x_1 + sigma * noise
-loss = ||v_student(x_t, t, text) - stopgrad(v_teacher(x_t, t, text + context))||^2
+loss = ||v_student(x_t, t, prompt) - stopgrad(v_teacher(x_t, t, prompt))||^2
 ```
+
+When optional teacher-only context is enabled, the teacher side becomes
+`v_teacher(x_t, t, prompt + context)` while the student remains conditioned only on `prompt`.
 
 This keeps the rollout memory footprint close to NFT/AWM because only the final latent `x_1` is stored. It is therefore a practical MVP for Wan text-to-video experiments. Trajectory-mode OPD, where teacher supervision is applied to stored rollout latents from selected denoising steps, is intentionally reserved for a later extension.
 
@@ -518,8 +521,8 @@ train:
   opd_kl_beta: 0.0                # >0 enables v-space KL against student reference
 
   teacher_guidance_scale: 5.0
-  teacher_context_keys: ["dense_caption", "scene_graph"]
-  teacher_context_dropout: 0.0
+  teacher_context_keys: []        # Empty means teacher and student share the same prompt
+  teacher_context_dropout: 0.0    # Used only when teacher_context_keys is non-empty
 
   num_train_timesteps: 4
   time_sampling_strategy: "discrete"
@@ -527,7 +530,13 @@ train:
   opd_timestep_mode: "forward_process"
 ```
 
-Dataset rows should keep teacher-only information under `opd_context` so it never enters the student adapter:
+The simplest dataset can be the existing prompt-only TXT format:
+
+```text
+A person opens a red umbrella in the rain.
+```
+
+If teacher-only context is enabled later, dataset rows should keep that information under `opd_context` so it never enters the student adapter:
 
 ```json
 {"prompt": "A person opens a red umbrella in the rain.", "opd_context": {"dense_caption": "The scene starts with...", "scene_graph": {"objects": ["person", "umbrella"], "relations": [["person", "holds", "umbrella"]]}}}

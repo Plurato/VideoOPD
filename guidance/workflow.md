@@ -221,7 +221,7 @@ BaseSample(
 | **AWM** | `False` | `[-1]` (final only) | Same as NFT; log-prob computed later during optimization |
 | **DGPO** | `False` | `[-1]` (final only) | Same trajectory policy as NFT/AWM; optimization uses fresh `TimeSampler` timesteps |
 | **CRD** | `False` | `[-1]` (final only) | Same trajectory policy as NFT/AWM; reward distillation against CFG-guided teacher reference |
-| **OPD** | `False` | `[-1]` (final only) | Teacher velocity matching on forward-process timesteps; teacher sees `opd_context`, student does not |
+| **OPD** | `False` | `[-1]` (final only) | Teacher velocity matching on forward-process timesteps; teacher uses the same prompt by default, with optional teacher-only `opd_context` |
 
 ### Key Points
 

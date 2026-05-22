@@ -32,7 +32,7 @@ MEDIA_CONTEXT_KEYS = {
 
 
 class OPDContextBuilder:
-    """Build teacher-only prompt context from sample metadata."""
+    """Build optional teacher-only prompt context from sample metadata."""
 
     def __init__(
         self,
@@ -43,6 +43,12 @@ class OPDContextBuilder:
         self.context_keys = context_keys
         self.prompt_template = prompt_template
         self.context_dropout = context_dropout
+        if self.context_keys and "{context}" not in self.prompt_template:
+            raise ValueError(
+                "`teacher.prompt_template` must contain `{context}` when "
+                "`train.teacher_context_keys` is non-empty. Set "
+                "`teacher_context_keys: []` for same-prompt OPD."
+            )
 
     @staticmethod
     def normalize_context(context: Any) -> Dict[str, Any]:

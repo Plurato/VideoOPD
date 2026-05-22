@@ -7,7 +7,7 @@ mixed_precision: "bf16"  # Options: no, fp16, bf16
 
 # Data Configuration
 data:
-  dataset_dir: "dataset/opd_wan21"  # JSONL with `prompt` (plus optional dense_caption / scene_graph for teacher-only context)
+  dataset_dir: "dataset/vid_prompt"  # Contains train.txt / test.txt (one prompt per line)
   preprocessing_batch_size: 8
   dataloader_num_workers: 4
   force_reprocess: false
@@ -34,7 +34,7 @@ teacher:
   master_weight_dtype: "bfloat16"
   target_components: []
   runtime_components: ["text_encoders", "transformers"]
-  prompt_template: "{prompt}\n\nTeacher-only context:\n{context}"
+  prompt_template: "{prompt}"
   negative_prompt: null
 
 log:
@@ -59,10 +59,12 @@ train:
   opd_kl_beta: 0.0
   ref_param_device: "cuda"  # Used only when opd_kl_beta > 0
 
-  # Teacher context seen only by the frozen teacher prompt encoder
+  # Empty context keys make the frozen teacher use the exact same prompt as the student.
+  # Later, set e.g. ["dense_caption", "scene_graph"] and update `teacher.prompt_template`
+  # to add teacher-only metadata back into the teacher prompt.
   teacher_guidance_scale: 5.0
-  teacher_context_keys: ["dense_caption", "scene_graph"]
-  teacher_context_dropout: 0.0
+  teacher_context_keys: []
+  teacher_context_dropout: 0.0  # Used only when teacher_context_keys is non-empty
 
   # OPD forward-process timesteps
   num_train_timesteps: 4

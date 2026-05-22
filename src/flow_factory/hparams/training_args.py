@@ -1020,8 +1020,13 @@ class OPDTrainingArguments(TrainingArguments):
         metadata={"help": "CFG scale used by the frozen teacher forward pass."},
     )
     teacher_context_keys: List[str] = field(
-        default_factory=lambda: ["dense_caption", "scene_graph"],
-        metadata={"help": "Metadata keys exposed to the teacher prompt only."},
+        default_factory=list,
+        metadata={
+            "help": (
+                "Metadata keys exposed to the teacher prompt only. Empty means the teacher "
+                "uses the same prompt as the student."
+            )
+        },
     )
     teacher_context_dropout: float = field(
         default=0.0,
