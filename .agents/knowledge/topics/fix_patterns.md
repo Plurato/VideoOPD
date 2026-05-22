@@ -70,6 +70,14 @@ Based on the fix type, write the fix entry to the appropriate document:
 - **Lesson**: Checkpoint scheduler configs are not a stable constructor contract across scheduler families. When wrapping a diffusers scheduler class, instantiate from keys accepted by the target scheduler rather than blindly forwarding every serialized config field.
 - **Related Constraint**: N/A
 
+### Standalone inference skips LoRA component device move
+- **Date**: 2026-05-23
+- **Symptom**: Wan LoRA inference failed with `RuntimeError: Input type (CUDABFloat16Type) and weight type (CPUBFloat16Type) should be the same` inside transformer `patch_embedding`.
+- **Root Cause**: LoRA checkpoint loading stores wrapped target components in `BaseAdapter._components`, and `on_load_components()` skips cached components because training treats them as accelerator-managed after `accelerator.prepare()`; standalone inference never prepares them, so the wrapped transformer stayed on CPU.
+- **Fix**: `inference.py` now moves all standalone inference components explicitly, including LoRA-wrapped cached components, and fails fast if any parameter or buffer remains off the accelerator device before generation starts.
+- **Lesson**: `_components` does not always imply accelerator-managed. Standalone utilities that bypass trainer initialization must not rely on `on_load_components()` for LoRA-wrapped target modules.
+- **Related Constraint**: #8
+
 ## Cross-refs
 
 - `constraints.md` (archival target for constraint violations)

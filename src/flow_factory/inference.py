@@ -16,11 +16,12 @@
 from __future__ import annotations
 
 import argparse
+import itertools
 import json
 import os
 import re
 from pathlib import Path
-from typing import Any, Dict, List, Literal, Optional
+from typing import Any, Dict, List, Literal, Optional, Set, Union
 
 import torch
 from accelerate import Accelerator
@@ -363,6 +364,58 @@ def _freeze_adapter(adapter: Any) -> None:
             component.eval()
 
 
+def _component_devices(component: torch.nn.Module) -> Set[torch.device]:
+    """Collect parameter and buffer devices for a module."""
+    devices = {
+        tensor.device
+        for tensor in itertools.chain(
+            component.parameters(recurse=True),
+            component.buffers(recurse=True),
+        )
+    }
+    return devices
+
+
+def _device_matches(actual: torch.device, expected: torch.device) -> bool:
+    """Compare devices while allowing index-free expected devices."""
+    if actual.type != expected.type:
+        return False
+    if expected.index is None:
+        return True
+    return actual.index == expected.index
+
+
+def _load_components_for_inference(
+    adapter: Any,
+    components: Union[str, List[str]],
+    device: torch.device,
+) -> None:
+    """Move all standalone inference components to the target device."""
+    names = adapter._resolve_component_names(components)
+    for name in names:
+        component = adapter.get_component(name)
+        if component is not None and hasattr(component, "to"):
+            # LoRA loading stores wrapped modules in _components before accelerator.prepare().
+            # Standalone inference never prepares them, so we must move them explicitly.
+            component.to(device)
+
+    mismatched = []
+    for name in names:
+        component = adapter.get_component(name)
+        if component is None or not isinstance(component, torch.nn.Module):
+            continue
+        devices = _component_devices(component)
+        if devices and any(not _device_matches(module_device, device) for module_device in devices):
+            device_list = ", ".join(sorted(str(module_device) for module_device in devices))
+            mismatched.append(f"{name}: {device_list}")
+
+    if mismatched:
+        raise RuntimeError(
+            "Inference components were not fully moved to the accelerator device "
+            f"({device}). Mismatched components: {mismatched}."
+        )
+
+
 def run_inference(args: argparse.Namespace) -> List[str]:
     """Run video generation and save outputs."""
     prompts = _read_prompts(args.prompt, args.prompt_file)
@@ -372,7 +425,8 @@ def run_inference(args: argparse.Namespace) -> List[str]:
     accelerator = Accelerator(mixed_precision=config.mixed_precision)
     adapter_cls = get_model_adapter_class(config.model_args.model_type)
     adapter = adapter_cls(config=config, accelerator=accelerator)
-    adapter.on_load_components(
+    _load_components_for_inference(
+        adapter=adapter,
         components=list(adapter.preprocessing_modules) + list(adapter.inference_modules),
         device=accelerator.device,
     )
