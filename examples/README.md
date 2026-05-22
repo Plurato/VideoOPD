@@ -25,6 +25,20 @@ ff-train examples/grpo/lora/flux1/default.yaml
 ff-train examples/opd/lora/wan21/t2v_reward_teacher.yaml
 ```
 
+**Inference**:
+```bash
+ff-infer \
+  --config examples/opd/lora/wan21/t2v_reward_teacher.yaml \
+  --checkpoint saves/<run_name>/checkpoints/<epoch> \
+  --resume-type lora \
+  --prompt "A slow dolly shot through a neon-lit rainy street." \
+  --output outputs/opd_sample.mp4
+```
+
+If `ff-infer` is not available in an already-installed environment, run
+`python -m flow_factory.inference` with the same arguments.
+Omit `--checkpoint` for pretrained-only inference.
+
 ## Contributing
 
 We welcome community contributions! Here's what you can contribute and how:

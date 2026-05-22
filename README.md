@@ -151,6 +151,26 @@ ff-train examples/grpo/lora/flux1/default.yaml
 ff-train examples/opd/lora/wan21/t2v_reward_teacher.yaml
 ```
 
+Run video inference from a pretrained model or a fine-tuned checkpoint:
+
+```bash
+ff-infer \
+  --config examples/opd/lora/wan21/t2v_reward_teacher.yaml \
+  --checkpoint saves/<run_name>/checkpoints/<epoch> \
+  --resume-type lora \
+  --prompt "A cinematic shot of a red fox running through snowy mountains." \
+  --output outputs/opd_sample.mp4 \
+  --num-frames 17 \
+  --num-inference-steps 30 \
+  --guidance-scale 5.0 \
+  --seed 42
+```
+
+If the console script is not refreshed in an existing environment, use
+`python -m flow_factory.inference` with the same arguments.
+Omit `--checkpoint` to generate directly from the pretrained model specified
+by the config, or pass `--model-path` to override it.
+
 # 📖 Guidance
 
 We provide a set of guidance documents to help you understand the framework and extend it. For a comprehensive understanding of the framework's design and motivation, refer to our [technique report](https://arxiv.org/abs/2602.12529).
