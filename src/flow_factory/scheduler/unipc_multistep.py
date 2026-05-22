@@ -87,6 +87,37 @@ class UniPCMultistepSDEScheduler(UniPCMultistepScheduler, SDESchedulerMixin):
         """Apply SDE rollout sampling"""
         self.train(mode=mode)
 
+    def set_timesteps(
+        self,
+        num_inference_steps: Optional[int] = None,
+        device: Optional[Union[str, torch.device]] = None,
+        sigmas: Optional[List[float]] = None,
+        mu: Optional[float] = None,
+    ) -> None:
+        """
+        Set inference timesteps and keep scheduler tensors on the execution device.
+
+        Diffusers' UniPC implementation moves ``timesteps`` to ``device`` but
+        then stores ``sigmas`` on CPU. Its multistep update later stacks scalar
+        values derived from ``sigmas`` with CUDA scalars derived from the sample,
+        so standalone GPU inference needs both scheduler arrays on the same
+        device.
+
+        Args:
+            num_inference_steps: Number of denoising steps.
+            device: Execution device for scheduler tensors.
+            sigmas: Optional custom sigma schedule.
+            mu: Optional dynamic shifting value forwarded to the parent scheduler.
+        """
+        super().set_timesteps(
+            num_inference_steps=num_inference_steps,
+            device=device,
+            sigmas=sigmas,
+            mu=mu,
+        )
+        if device is not None:
+            self.sigmas = self.sigmas.to(device=device)
+
     @property
     def sde_steps(self) -> torch.Tensor:
         """

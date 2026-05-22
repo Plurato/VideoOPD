@@ -78,6 +78,14 @@ Based on the fix type, write the fix entry to the appropriate document:
 - **Lesson**: `_components` does not always imply accelerator-managed. Standalone utilities that bypass trainer initialization must not rely on `on_load_components()` for LoRA-wrapped target modules.
 - **Related Constraint**: #8
 
+### UniPC eval sigmas remain on CPU
+- **Date**: 2026-05-23
+- **Symptom**: Wan inference reached the scheduler and failed with `Expected all tensors to be on the same device` in `multistep_uni_p_bh_update` while stacking `rks`.
+- **Root Cause**: Diffusers' UniPC `set_timesteps(..., device=cuda)` moves `timesteps` to CUDA but stores `sigmas` on CPU; Flow-Factory's eval path calls the parent UniPC multistep update, which mixes scalars derived from CPU `sigmas` with CUDA sample-derived scalars.
+- **Fix**: `UniPCMultistepSDEScheduler.set_timesteps()` now preserves the parent scheduler setup and then moves `sigmas` to the requested execution device.
+- **Lesson**: Scheduler tensor device placement matters for multistep solvers, not just model weights and latents. Wrapper schedulers should normalize all tensors consumed by parent solver math before generation.
+- **Related Constraint**: #20
+
 ## Cross-refs
 
 - `constraints.md` (archival target for constraint violations)
