@@ -221,6 +221,14 @@ class OPDTrainer(BaseTrainer):
             self.adapter.ema_step(step=self.epoch)
             self.epoch += 1
 
+        if self.log_args.save_freq > 0 and self.log_args.save_dir and self.epoch > 0:
+            save_dir = os.path.join(
+                self.log_args.save_dir,
+                str(self.log_args.run_name),
+                'checkpoints',
+            )
+            self.save_checkpoint(save_dir, epoch=self.epoch)
+
     def sample(self) -> List[BaseSample]:
         """Generate student rollouts and keep only final latents for OPD matching."""
         self.adapter.rollout()

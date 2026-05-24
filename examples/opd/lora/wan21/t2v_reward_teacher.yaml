@@ -8,11 +8,11 @@ mixed_precision: "bf16"  # Options: no, fp16, bf16
 # Data Configuration
 data:
   dataset_dir: "dataset/vid_prompt"  # Contains train.txt / test.txt (one prompt per line)
-  preprocessing_batch_size: 8
-  dataloader_num_workers: 4
+  preprocessing_batch_size: 16
+  dataloader_num_workers: 8
   force_reprocess: false
   cache_dir: "~/.cache/flow_factory/datasets"
-  max_dataset_size: 1000
+  max_dataset_size: null  # Use the full vid_prompt dataset for the long distillation run.
   sampler_type: "auto"  # Options: auto, distributed_k_repeat, group_contiguous
 
 # Student Model Configuration
@@ -42,17 +42,16 @@ log:
   project: "Flow-Factory-OPD"
   logging_backend: "tensorboard"  # Options: wandb, swanlab, tensorboard, none
   save_dir: "saves/"
-  # MVP run: checkpoint every 2 epochs (epochs 0, 2, 4) so we get LoRA snapshots
-  # at the start, middle, and near-end of the 5-epoch run for offline inspection.
-  save_freq: 2
+  # Long run: save every 10 epochs, plus a final checkpoint at training end.
+  save_freq: 10
   save_model_only: true
 
 # Training Configuration
 train:
   trainer_type: "opd"
-  # MVP smoke run: ~5 outer epochs is enough to confirm the loss curve and pipeline.
-  # Set to null or a negative value to train indefinitely.
-  max_epochs: 5
+  # Long OPD distillation run for 4 x H200. With the settings below this runs
+  # 100 outer epochs, 512 unique prompts per epoch, and 16 optimizer steps per epoch.
+  max_epochs: 100
   opd_loss_type: "velocity_mse"  # Options: velocity_mse, x0_mse
   opd_teacher_weight: 1.0
   opd_reward_weight: 0.0  # Set >0 only after adding scalar rewards below
@@ -67,7 +66,7 @@ train:
   teacher_context_dropout: 0.0  # Used only when teacher_context_keys is non-empty
 
   # OPD forward-process timesteps
-  num_train_timesteps: 4
+  num_train_timesteps: 12
   time_sampling_strategy: "discrete"  # Options: uniform, logit_normal, discrete, discrete_with_init, discrete_wo_init
   time_shift: 3.0
   timestep_range: 0.9
@@ -77,30 +76,32 @@ train:
 
   # Student sampling settings
   resolution: [480, 832]
-  num_frames: 17
-  num_inference_steps: 12
+  extra_kwargs:
+    num_frames: 17
+  num_inference_steps: 24
   guidance_scale: 5.0
 
-  # Batch and sampling — geometry chosen for 4 GPUs (W=4, B=1, G=1):
-  #   M*K = 32*4 = 128, divisible by W*B*G = 4;  M = 32 divisible by W = 4.
+  # Pure OPD distillation does not need K-repeat reward groups. Spend the same
+  # compute on prompt diversity instead of repeated rollouts of the same prompt.
+  # Geometry for 4 GPUs (W=4, B=1, G=16): M*K = 512, divisible by W*B*G = 64.
   per_device_batch_size: 1
-  group_size: 4
+  group_size: 1
   global_std: false
   advantage_aggregation: "gdpo"  # Used only when opd_reward_weight > 0
-  unique_sample_num_per_epoch: 32
-  gradient_step_per_epoch: 1
+  unique_sample_num_per_epoch: 512
+  gradient_step_per_epoch: 16
   gradient_accumulation_steps: auto
 
   # Optimization
   seed: 42
-  learning_rate: 1.0e-4
+  learning_rate: 5.0e-5
   adam_weight_decay: 1.0e-4
   adam_betas: [0.9, 0.999]
   adam_epsilon: 1.0e-8
   max_grad_norm: 1.0
 
   # EMA and memory
-  ema_decay: 0.5
+  ema_decay: 0.95
   ema_update_interval: 1
   ema_device: "cuda"
   enable_gradient_checkpointing: false
@@ -113,13 +114,13 @@ scheduler:
 # Evaluation settings
 eval:
   resolution: [480, 832]
-  num_frames: 17
+  extra_kwargs:
+    num_frames: 17
   per_device_batch_size: 1
   guidance_scale: 5.0
-  num_inference_steps: 20
-  # Disable periodic eval during the MVP smoke run so the 5-epoch budget
-  # spends 100% of compute on the OPD loss. Set to 1 (or 5) to inspect
-  # generations once the loss curve looks sensible.
+  num_inference_steps: 30
+  # Keep built-in eval disabled because it generates the entire test split.
+  # Use ff-infer on saved checkpoints for controlled qualitative comparisons.
   eval_freq: 0
   seed: 42
 
